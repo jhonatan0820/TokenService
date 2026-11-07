@@ -1,124 +1,109 @@
 # Token Service
 
-Microservicio de autenticación para generar, validar y renovar tokens JWT firmados y cifrados.
+Microservicio para generar, validar y renovar tokens JWT cifrados con AES-256-GCM.
 
-## Despliegue
+La interfaz está disponible en [https://tokenservice.dotacioneszambrano.com/](https://tokenservice.dotacioneszambrano.com/).
 
-La interfaz web del microservicio está desplegada en:
+## Funcionalidades
 
-**[https://tokenService.dotacioneszambrano.com/](https://tokenService.dotacioneszambrano.com/)**
+- Genera JWT firmados con HS256 y expiración configurable (2 minutos por defecto).
+- Valida y renueva tokens cifrados.
+- Mantiene flujos separados para las integraciones de servicio y la interfaz web.
+- Incluye una interfaz para generar, inspeccionar, validar y renovar tokens. Muestra alertas y un indicador circular mientras procesa las solicitudes.
 
-## Problema
+## Tecnologías
 
-Las aplicaciones que comparten información de sesión necesitan comprobar que las credenciales corresponden a un token legítimo, que no fueron alteradas y que todavía están vigentes. También necesitan un ciclo de vida claro para emitir y renovar esos tokens sin exponer su contenido durante el transporte.
+Java 17 · Spring Boot 3.3.5 · Maven · JJWT 0.12.6 · AES-256-GCM
 
-## Solución
+## API
 
-Este servicio centraliza el ciclo de vida del token:
+Las solicitudes usan `Content-Type: application/json` y el campo `data`.
 
-- Recibe la carga útil cifrada y la descifra a través de `cryptoService`.
-- Genera un JWT firmado con HS256, con identificador único y expiración de **2 minutos** por defecto.
-- Cifra el JWT antes de devolverlo.
-- Descifra y valida los tokens recibidos, comprobando firma y expiración.
-- Renueva un token vigente conservando su carga útil.
-- Incluye una interfaz web para generar, inspeccionar, validar y renovar tokens.
+### Integraciones de servicio
 
-La interfaz separa visualmente el JWT legible del token cifrado. Para validar o renovar, el usuario debe pegar el token cifrado; la página rechaza el JWT en texto claro.
+Estas rutas usan el flujo de servicio de `EncryptService`, que cifra y descifra con `service-key`:
 
-## Stack tecnológico
-
-| Componente | Tecnología |
+| Método y ruta | Uso |
 | --- | --- |
-| Lenguaje | Java 17 |
-| Framework | Spring Boot 3.3.5 |
-| Build | Maven |
-| API del microservicio | Spring Web con `@RestController` |
-| JWT | JJWT 0.12.6, algoritmo HS256 |
-| Cifrado | AES-256-GCM mediante `cryptoService` y Web Crypto en el frontend |
-| Interfaz | HTML, CSS y JavaScript estáticos servidos por Spring Boot |
+| `POST /tokenService/generate` | Recibe la carga útil cifrada y devuelve un JWT cifrado. |
+| `POST /tokenService/validate` | Comprueba firma y expiración; devuelve `{"data":"ACTIVO"}` o `{"data":"VENCIDO"}`. |
+| `POST /tokenService/refresh` | Renueva un token vigente y devuelve el nuevo token cifrado. |
 
-## Flujo
-
-1. El cliente cifra el JSON de entrada con AES-256-GCM.
-2. `POST /tokenService/generate` descifra esa carga llamando a `cryptoService`, crea el JWT y solicita cifrarlo.
-3. El microservicio devuelve el token cifrado.
-4. Para validar o renovar, el cliente envía el token cifrado. El servicio lo descifra y comprueba el JWT.
-5. Renovar crea otro JWT con una nueva expiración y la misma carga útil.
-
-## Endpoints
-
-Las solicitudes usan `Content-Type: application/json` y un campo `data`.
-
-### Generar
-
-`POST /tokenService/generate`
+Ejemplo de solicitud:
 
 ```json
 {
-  "data": "<carga_util_cifrada_en_base64>"
+  "data": "<valor_cifrado_en_base64>"
 }
 ```
 
-Responde con el token JWT cifrado:
+### Interfaz web
 
-```json
-{
-  "data": "<token_cifrado>"
-}
+La interfaz usa `web-key` y las rutas web correspondientes:
+
+- `GET /tokenService/config`: obtiene la clave web para el navegador en `webKeyBase64`.
+- `POST /tokenService/web/generate`
+- `POST /tokenService/web/validate`
+- `POST /tokenService/web/refresh`
+
+La clave de servicio no se envía al navegador.
+
+## Secretos y configuración
+
+Crea `application-secrets.yml` en la raíz del proyecto. El archivo se importa automáticamente al ejecutar desde la raíz y está excluido de Git. No subas sus valores reales al repositorio.
+
+```yaml
+crypto:
+  base-url: "http://localhost:8081"
+  aes:
+    service-key: "<service-key de EncryptService>"
+    web-key: "<web-key de EncryptService>"
+
+jwt:
+  secret: "<secreto aleatorio de al menos 32 bytes>"
+  expiration-seconds: 120
 ```
 
-### Validar
+Las claves AES deben coincidir con las correspondientes de `EncryptService` y ser claves AES-256 codificadas en Base64. `EncryptService` usa `service-key` en sus rutas de servicio y `web-key` en sus rutas web. `TokenService` entrega al navegador solamente `web-key`.
 
-`POST /tokenService/validate`
+En Docker, configura `crypto.base-url` como `http://encrypt-service:8080`. Para ejecutar `TokenService` desde el IDE mientras `EncryptService` corre localmente, usa `http://localhost:8081`.
 
-```json
-{
-  "data": "<token_cifrado>"
-}
-```
+Variables de entorno compatibles:
 
-Responde `{"data":"ACTIVO"}` si la firma es válida y el token no ha vencido, o `{"data":"VENCIDO"}` si expiró. Una carga sin cifrar o alterada se rechaza.
+| Variable | Uso |
+| --- | --- |
+| `SERVER_PORT` | Puerto HTTP de TokenService (por defecto `8080`). |
+| `CRYPTO_BASE_URL` | URL base de EncryptService. |
+| `JWT_SECRET` | Secreto HS256 de al menos 32 bytes. |
+| `JWT_EXPIRATION_SECONDS` | Duración del JWT en segundos (por defecto `120`). |
 
-### Renovar
+## Ejecución local
 
-`POST /tokenService/refresh`
+Requisitos: JDK 17+, Maven 3.8+ y `EncryptService` disponible en `http://localhost:8081`.
 
-```json
-{
-  "data": "<token_cifrado>"
-}
-```
-
-Responde con un nuevo token cifrado si el token recibido es válido y sigue vigente.
-
-## `cryptoService`
-
-Por defecto, el microservicio espera `cryptoService` en `http://localhost:8081`.
-
-- `POST /cryptoService/encrypt`: recibe `{"data":{"text":"<jwt>"}}` y devuelve `{"data":"<texto_cifrado>"}`.
-- `POST /cryptoService/decrypt`: recibe `{"data":"<texto_cifrado>"}` y devuelve la carga en `data`. Para un JWT, `data.text` contiene el JWT descifrado.
-
-El frontend cifra con AES-256-GCM y representa los bytes como Base64 con el IV de 12 bytes antepuesto al ciphertext y al tag GCM de 128 bits. Ese formato debe coincidir con `cryptoService`.
-
-## Ejecutar localmente
-
-Requisitos: JDK 17+, Maven 3.8+ y `cryptoService` disponible.
+1. Crea `application-secrets.yml` con la configuración anterior.
+2. Desde la raíz del proyecto, inicia el servicio:
 
 ```powershell
-$env:JWT_SECRET = 'reemplaza-por-una-clave-aleatoria-de-al-menos-32-bytes'
-$env:CRYPTO_BASE_URL = 'http://localhost:8081'
-$env:JWT_EXPIRATION_SECONDS = '120'
 mvn spring-boot:run
 ```
 
-La interfaz estará disponible en `http://localhost:8080/`.
+La interfaz estará en `http://localhost:8080/`.
 
-### Configuración
+## Docker Compose
 
-| Variable | Valor predeterminado | Descripción |
-| --- | --- | --- |
-| `SERVER_PORT` | `8080` | Puerto HTTP del microservicio |
-| `CRYPTO_BASE_URL` | `http://localhost:8081` | URL base de `cryptoService` |
-| `JWT_SECRET` | Clave de desarrollo del proyecto | Secreto HS256; configura uno aleatorio de al menos 32 bytes fuera de desarrollo |
-| `JWT_EXPIRATION_SECONDS` | `120` | Vigencia del JWT en segundos |
+`Dockerfile` compila el proyecto con Maven y ejecuta la aplicación como usuario sin privilegios. Compose conecta el contenedor a la red externa `homelab`, compartida con `EncryptService`.
 
+La red debe existir antes de iniciar los servicios. Configura `application-secrets.yml` con `crypto.base-url: "http://encrypt-service:8080"` y ejecuta:
+
+```powershell
+docker compose up -d --build
+```
+
+Para revisar los registros:
+
+```powershell
+docker compose logs -f token-service
+```
+
+El contenedor expone el puerto `8080` dentro de la red Docker; un proxy inverso conectado a `homelab` puede dirigir el tráfico hacia `token-service:8080`.
