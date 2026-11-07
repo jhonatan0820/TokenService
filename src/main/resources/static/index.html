@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0b1120">
+  <title>Token Service</title>
+  <link rel="stylesheet" href="/css/styles.css">
+</head>
+<body>
+<main class="app-shell">
+  <header class="page-header">
+    <div>
+      <p class="eyebrow">MICROSERVICIO DE AUTENTICACIÓN JWT</p>
+      <h1>Token Service</h1>
+      <p class="intro">Genera, valida y renueva tokens cifrados con AES-256-GCM.</p>
+    </div>
+    <button id="themeToggle" class="theme-toggle" type="button" aria-label="Cambiar a modo claro" title="Cambiar a modo claro"><svg id="themeIcon" viewBox="0 0 24 24" aria-hidden="true"></svg></button>
+  </header>
+
+  <div class="module-grid">
+    <section class="module generate-module" aria-labelledby="generateHeading">
+      <div class="module-heading">
+        <span class="module-number">01</span>
+        <div><h2 id="generateHeading">Generar</h2><p class="note">Ingresa la carga útil en JSON.</p></div>
+      </div>
+      <label for="payload">Datos del token</label>
+      <textarea id="payload" class="payload-input" spellcheck="false">{
+  "name": "Jhonatan Zambrano",
+  "iduser": 23243,
+  "profiles": "[1,5]"
+}</textarea>
+      <div class="module-footer">
+        <p id="generateMessage" class="status" role="status"></p>
+        <button id="generate" class="primary-button" type="button">Generar token <span aria-hidden="true">→</span></button>
+      </div>
+    </section>
+
+    <section class="module result-module" aria-labelledby="plainHeading">
+      <div class="module-heading">
+        <span class="module-number">02</span>
+        <div><h2 id="plainHeading">Token desencriptado</h2><p class="note">JWT legible para inspección visual.</p></div>
+      </div>
+      <label for="plainToken">JWT en texto claro</label>
+      <textarea id="plainToken" class="result-token" spellcheck="false" readonly placeholder="El JWT legible aparecerá aquí"></textarea>
+    </section>
+
+    <section class="module result-module" aria-labelledby="cipherHeading">
+      <div class="module-heading">
+        <span class="module-number">03</span>
+        <div><h2 id="cipherHeading">Token encriptado</h2><p class="note">Este es el formato requerido para operar.</p></div>
+      </div>
+      <div class="result-toolbar">
+        <label for="cipherToken">AES-256-GCM</label>
+        <button id="copyCipher" class="copy-button" type="button" aria-label="Copiar token encriptado" title="Copiar token encriptado">
+          <svg id="copyCipherIcon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
+        </button>
+      </div>
+      <textarea id="cipherToken" class="result-token" spellcheck="false" readonly placeholder="El token cifrado aparecerá aquí"></textarea>
+    </section>
+  </div>
+
+  <section class="token-actions" aria-labelledby="actionsHeading">
+    <div class="actions-copy">
+      <p class="eyebrow">OPERACIONES</p>
+      <h2 id="actionsHeading">Validar o renovar</h2>
+      <p class="note">Pega el token encriptado. Por seguridad, el JWT en texto claro no se acepta.</p>
+    </div>
+    <div class="actions-form">
+      <label for="actionToken">Token encriptado</label>
+      <textarea id="actionToken" class="action-token" spellcheck="false" placeholder="Pega aquí el token AES-256-GCM"></textarea>
+      <div class="action-controls">
+        <button id="validate" class="secondary-button" type="button">Validar token</button>
+        <button id="refresh" class="primary-button" type="button">Renovar token</button>
+      </div>
+      <div class="action-messages">
+        <p id="validateMessage" class="status" role="status"></p>
+        <p id="refreshMessage" class="status" role="status"></p>
+        <p id="tokenInputMessage" class="status error" role="status"></p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <span class="footer-credit">Desarrollado por Jhonatan Zambrano</span>
+    <div class="footer-links">
+      <a class="footer-link" href="https://github.com/jhonatan0820" target="_blank" rel="noopener noreferrer" aria-label="GitHub de Jhonatan Zambrano" title="GitHub">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.53v-2.08c-3.1.68-3.76-1.32-3.76-1.32-.5-1.29-1.23-1.63-1.23-1.63-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.59 1.21 3.22.93.1-.72.39-1.21.7-1.49-2.47-.28-5.07-1.24-5.07-5.5 0-1.22.44-2.21 1.15-2.99-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.77 1.15 2.99 0 4.27-2.6 5.21-5.08 5.49.4.35.75 1.02.75 2.06V22c0 .29.2.63.76.52A11.1 11.1 0 0 0 12 .9Z"/></svg>
+        <span>GitHub</span>
+      </a>
+      <button id="emailButton" class="footer-link email" type="button" aria-label="Copiar correo electrónico" title="Copiar correo">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
+        <span id="emailLabel">Correo</span>
+      </button>
+    </div>
+  </footer>
+</main>
+<div id="toastRegion" class="toast-region" aria-live="polite" aria-atomic="false"></div>
+<script>
+  const byId = (id) => document.getElementById(id);
+  const themeToggle = byId('themeToggle');
+  const savedTheme = localStorage.getItem('token-service-theme');
+  document.documentElement.dataset.theme = savedTheme === 'light' ? 'light' : 'dark';
+
+  function updateThemeButton() {
+    const isDark = document.documentElement.dataset.theme === 'dark';
+    const label = isDark ? 'Cambiar a modo claro' : 'Cambiar a modo oscuro';
+    themeToggle.setAttribute('aria-label', label);
+    themeToggle.title = label;
+    byId('themeIcon').innerHTML = isDark
+      ? '<circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path>'
+      : '<path d="M20.9 13A9 9 0 0 1 11 3.1 9 9 0 1 0 20.9 13Z"></path>';
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const nextTheme = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = nextTheme;
+    localStorage.setItem('token-service-theme', nextTheme);
+    updateThemeButton();
+  });
+  updateThemeButton();
+  const API_BASE = '';
+
+  function fromBase64(value) {
+    const binary = atob(value);
+    return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+  }
+
+  function toBase64(bytes) {
+    let binary = '';
+    for (const byte of bytes) binary += String.fromCharCode(byte);
+    return btoa(binary);
+  }
+
+  let aesKeyPromise;
+  async function aesKey() {
+    if (!aesKeyPromise) {
+      aesKeyPromise = fetch(`${API_BASE}/tokenService/config`, { headers: { 'Accept': 'application/json' } })
+        .then(async (response) => {
+          const body = await response.json().catch(() => null);
+          if (!response.ok || !body?.webKeyBase64) {
+            throw new Error(body?.error || 'No se pudo cargar la clave de cifrado.');
+          }
+          return crypto.subtle.importKey('raw', fromBase64(body.webKeyBase64), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+        })
+        .catch((error) => {
+          aesKeyPromise = null;
+          throw error;
+        });
+    }
+    return aesKeyPromise;
+  }
+
+  async function encryptText(text) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encrypted = new Uint8Array(await crypto.subtle.encrypt(
+      { name: 'AES-GCM', iv, tagLength: 128 }, await aesKey(), new TextEncoder().encode(text)
+    ));
+    const packed = new Uint8Array(iv.length + encrypted.length);
+    packed.set(iv, 0);
+    packed.set(encrypted, iv.length);
+    return toBase64(packed);
+  }
+
+  async function decryptText(value) {
+    const packed = fromBase64(value.trim());
+    if (packed.length <= 28) throw new Error('El token no tiene un formato cifrado válido.');
+    const iv = packed.slice(0, 12);
+    const ciphertext = packed.slice(12);
+    const plaintext = await crypto.subtle.decrypt(
+      { name: 'AES-GCM', iv, tagLength: 128 }, await aesKey(), ciphertext
+    );
+    return new TextDecoder().decode(plaintext);
+  }
+
+  async function decryptJwt(value) {
+    const decoded = JSON.parse(await decryptText(value));
+    if (typeof decoded?.text !== 'string') throw new Error('Respuesta cifrada inválida: no contiene el JWT.');
+    return decoded.text;
+  }
+
+  async function post(path, data) {
+    const response = await fetch(`${API_BASE}/tokenService/web/${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({ data })
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(body?.error || body?.message || `Error HTTP ${response.status}`);
+    return body;
+  }
+
+  function setMessage(id, message, ok) {
+    const node = byId(id);
+    node.textContent = message;
+    node.className = `status ${ok ? 'success' : 'error'}`;
+  }
+
+  function showToast(message, type = 'success') {
+    const region = byId('toastRegion');
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.setAttribute('role', type === 'error' ? 'alert' : 'status');
+
+    const mark = document.createElement('span');
+    mark.className = 'toast-mark';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = type === 'success' ? '✓' : type === 'warning' ? '!' : '×';
+
+    const text = document.createElement('p');
+    text.className = 'toast-text';
+    text.textContent = message;
+
+    const close = document.createElement('button');
+    close.className = 'toast-close';
+    close.type = 'button';
+    close.setAttribute('aria-label', 'Cerrar alerta');
+    close.textContent = '×';
+
+    let timeout;
+    const dismiss = () => {
+      window.clearTimeout(timeout);
+      toast.classList.add('is-leaving');
+      window.setTimeout(() => toast.remove(), 180);
+    };
+    close.addEventListener('click', dismiss);
+    toast.append(mark, text, close);
+    region.append(toast);
+    timeout = window.setTimeout(dismiss, 5000);
+  }
+
+  function setButtonLoading(button, loading, label = '') {
+    if (loading) {
+      if (!button.dataset.idleHtml) button.dataset.idleHtml = button.innerHTML;
+      button.innerHTML = `<span class="button-spinner" aria-hidden="true"></span><span>${label}</span>`;
+      button.classList.add('is-loading');
+      button.disabled = true;
+      button.setAttribute('aria-busy', 'true');
+      return;
+    }
+    if (button.dataset.idleHtml) {
+      button.innerHTML = button.dataset.idleHtml;
+      delete button.dataset.idleHtml;
+    }
+    button.classList.remove('is-loading');
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+  }
+
+  async function copyField(fieldId, buttonId, iconId) {
+    const value = byId(fieldId).value.trim();
+    const button = byId(buttonId);
+    if (!value) return setMessage('tokenInputMessage', 'No hay token para copiar.', false);
+    try {
+      await navigator.clipboard.writeText(value);
+      button.classList.add('copied');
+      button.setAttribute('aria-label', 'Token copiado');
+      button.title = 'Token copiado';
+      byId(iconId).innerHTML = '<path d="m5 12 4 4L19 6"></path>';
+      window.setTimeout(() => {
+        button.classList.remove('copied');
+        button.setAttribute('aria-label', 'Copiar token');
+        button.title = 'Copiar token';
+        byId(iconId).innerHTML = '<rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path>';
+      }, 1300);
+    } catch {
+      byId(fieldId).focus();
+      byId(fieldId).select();
+      setMessage('tokenInputMessage', 'Token seleccionado. Cópialo manualmente.', false);
+    }
+  }
+
+  async function requireEncryptedToken() {
+    const value = byId('actionToken').value.trim();
+    if (!value) throw new Error('Ingresa el token encriptado.');
+
+    const jwtParts = value.split('.');
+    if (jwtParts.length === 3 && jwtParts.every((part) => part.length > 0)) {
+      throw new Error('La data no está cifrada. Envía el token cifrado en Base64.');
+    }
+
+    let packed;
+    try {
+      packed = fromBase64(value);
+    } catch {
+      throw new Error('La data no está cifrada. Envía el token cifrado en Base64.');
+    }
+    if (packed.length <= 28) {
+      throw new Error('La data no está cifrada. Envía el token cifrado en Base64.');
+    }
+
+    try {
+      await decryptText(value);
+    } catch {
+      throw new Error('La data está cifrada, pero está corrupta o fue alterada.');
+    }
+    return value;
+  }
+  byId('copyCipher').addEventListener('click', () => copyField('cipherToken', 'copyCipher', 'copyCipherIcon'));
+
+  byId('generate').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    setButtonLoading(button, true, 'Generando token...');
+    try {
+      const payload = JSON.parse(byId('payload').value);
+      if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
+        throw new Error('Los datos deben ser un objeto JSON.');
+      }
+      const encryptedPayload = await encryptText(JSON.stringify(payload));
+      const result = await post('generate', encryptedPayload);
+      if (typeof result?.data !== 'string') throw new Error('Respuesta inesperada del microservicio.');
+      byId('cipherToken').value = result.data;
+      const jwt = await decryptJwt(result.data);
+      byId('plainToken').value = jwt;
+      setMessage('generateMessage', 'Token generado. Se muestran las versiones legible y encriptada.', true);
+      setMessage('tokenInputMessage', '', true);
+    } catch (error) {
+      setMessage('generateMessage', error.message || 'No fue posible generar el token.', false);
+    } finally {
+      setButtonLoading(button, false);
+    }
+  });
+
+  byId('validate').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    setButtonLoading(button, true, 'Validando token...');
+    setMessage('tokenInputMessage', '', true);
+    try {
+      const encryptedToken = await requireEncryptedToken();
+      const result = await post('validate', encryptedToken);
+      const state = result?.data;
+      if (!['ACTIVO', 'VENCIDO'].includes(state)) throw new Error('Respuesta inesperada del microservicio.');
+      if (state === 'ACTIVO') showToast('Token válido.', 'success');
+      else showToast('El token está vencido.', 'warning');
+      setMessage('validateMessage', '', state === 'ACTIVO');
+    } catch (error) {
+      if (error.message.startsWith('La data no está cifrada')
+          || error.message.startsWith('La data está cifrada')
+          || error.message.startsWith('Ingresa')) {
+        setMessage('tokenInputMessage', error.message, false);
+      } else {
+        setMessage('validateMessage', error.message || 'No fue posible validar el token.', false);
+      }
+    } finally {
+      setButtonLoading(button, false);
+    }
+  });
+
+  byId('refresh').addEventListener('click', async (event) => {
+    const button = event.currentTarget;
+    setButtonLoading(button, true, 'Renovando token...');
+    setMessage('tokenInputMessage', '', true);
+    try {
+      const encryptedToken = await requireEncryptedToken();
+      const result = await post('refresh', encryptedToken);
+      if (typeof result?.data !== 'string') throw new Error('Respuesta inesperada del microservicio.');
+      byId('cipherToken').value = result.data;
+      const jwt = await decryptJwt(result.data);
+      byId('plainToken').value = jwt;
+      showToast('Token renovado correctamente.', 'success');
+    } catch (error) {
+      if (error.message.startsWith('La data no está cifrada')
+          || error.message.startsWith('La data está cifrada')
+          || error.message.startsWith('Ingresa')) {
+        setMessage('tokenInputMessage', error.message, false);
+      } else {
+        setMessage('refreshMessage', error.message || 'No fue posible renovar el token.', false);
+      }
+    } finally {
+      setButtonLoading(button, false);
+    }
+  });
+
+  byId('emailButton').addEventListener('click', async () => {
+    const label = byId('emailLabel');
+    try {
+      await navigator.clipboard.writeText('jhonizam2023@gmail.com');
+      label.textContent = 'Copiado';
+      window.setTimeout(() => { label.textContent = 'Correo'; }, 1800);
+    } catch {
+      label.textContent = 'No se pudo copiar';
+      window.setTimeout(() => { label.textContent = 'Correo'; }, 1800);
+    }
+  });
+</script>
+</body>
+</html>
+
+
+
+
+

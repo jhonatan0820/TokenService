@@ -1,0 +1,19 @@
+services:
+  token-service:
+    container_name: token-service
+    build:
+      context: .
+      dockerfile: Dockerfile
+    expose:
+      - "8080"
+    environment:
+      SPRING_CONFIG_IMPORT: "optional:file:/app/application-secrets.yml"
+    volumes:
+      - ./application-secrets.yml:/app/application-secrets.yml:ro
+    restart: unless-stopped
+    networks:
+      - homelab
+
+networks:
+  homelab:
+    external: true

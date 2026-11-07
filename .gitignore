@@ -1,0 +1,9 @@
+# Secretos locales: no subir a GitHub
+application-secrets.yml
+
+target/
+.idea/
+.vscode/
+.env
+.env.*
+*.log

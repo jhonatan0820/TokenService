@@ -1,0 +1,10 @@
+.git
+.gitignore
+.github
+.idea
+.vscode
+target
+*.log
+.env
+.env.*
+application-secrets.yml
