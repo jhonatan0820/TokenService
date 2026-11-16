@@ -95,7 +95,7 @@ jobs:
           git reset --hard origin/main
 
           # Build and deploy
-          docker compose build --pull "$SERVICE"
+          docker compose build --no-cache --pull "$SERVICE"
           docker compose up -d --force-recreate --no-build "$SERVICE"
 
           # Health check
