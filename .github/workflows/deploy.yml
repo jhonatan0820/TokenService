@@ -1,0 +1,138 @@
+
+name: Deploy TokenService
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: tokenservice-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Linux, X64, tokenservice]
+    timeout-minutes: 30
+
+    steps:
+      - name: Backup, deploy and rollback
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          APP_DIR="/opt/homelab/compose/apps/tokenService"
+          BACKUP_ROOT="/opt/homelab/backups/tokenservice"
+          CONTAINER="token-service"
+          SERVICE="token-service"
+          HEALTH_PATH="/tokenService/config"
+          STAMP=$(date +%Y%m%d-%H%M%S)
+          BACKUP_DIR="$BACKUP_ROOT/$STAMP"
+
+          mkdir -p "$BACKUP_DIR"
+          chmod 700 "$BACKUP_ROOT" "$BACKUP_DIR"
+
+          cd "$APP_DIR"
+
+          OLD_COMMIT=$(git rev-parse HEAD)
+          OLD_IMAGE_ID=$(docker inspect -f '{{.Image}}' "$CONTAINER")
+          OLD_IMAGE_REF=$(docker inspect -f '{{.Config.Image}}' "$CONTAINER")
+
+          echo "$OLD_COMMIT" > "$BACKUP_DIR/commit.txt"
+          echo "$OLD_IMAGE_ID" > "$BACKUP_DIR/image-id.txt"
+          echo "$OLD_IMAGE_REF" > "$BACKUP_DIR/image-ref.txt"
+
+          cp docker-compose.yml "$BACKUP_DIR/"
+          cp -a .env "$BACKUP_DIR/" 2>/dev/null || true
+          cp -a application-secrets.yml "$BACKUP_DIR/"
+
+          docker inspect "$CONTAINER" > "$BACKUP_DIR/container-inspect.json"
+          docker image inspect "$OLD_IMAGE_ID" > "$BACKUP_DIR/image-inspect.json"
+
+          docker tag "$OLD_IMAGE_ID" "tokenservice-backup:$STAMP"
+
+          rollback() {
+            echo "Deployment failed. Starting rollback..."
+            trap - ERR
+            set +e
+
+            git reset --hard "$OLD_COMMIT"
+
+            cp "$BACKUP_DIR/docker-compose.yml" docker-compose.yml
+            cp "$BACKUP_DIR/application-secrets.yml" application-secrets.yml
+
+            [ ! -f "$BACKUP_DIR/.env" ] || cp "$BACKUP_DIR/.env" .env
+
+            docker tag "$OLD_IMAGE_ID" "$OLD_IMAGE_REF"
+
+            docker compose up -d --force-recreate --no-build "$SERVICE"
+
+            echo "Checking rollback health..."
+
+            for i in $(seq 1 30); do
+              IP=$(docker inspect -f \
+                '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER")
+
+              if [ -n "$IP" ] && \
+                curl -fsS "http://$IP:8080$HEALTH_PATH" >/dev/null; then
+                echo "$OLD_COMMIT" > "$BACKUP_ROOT/current-deployed-commit"
+                echo "Rollback successful."
+                exit 1
+              fi
+
+              sleep 2
+            done
+
+            echo "CRITICAL: rollback health check failed."
+            exit 1
+          }
+
+          trap rollback ERR
+
+          # Update source
+          git fetch origin main
+          git reset --hard origin/main
+
+          # Build and deploy
+          docker compose build --pull "$SERVICE"
+          docker compose up -d --force-recreate --no-build "$SERVICE"
+
+          # Health check
+          echo "Checking TokenService..."
+
+          HEALTHY=false
+
+          for i in $(seq 1 30); do
+            IP=$(docker inspect -f \
+              '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$CONTAINER")
+
+            if [ -n "$IP" ] && \
+              curl -fsS "http://$IP:8080$HEALTH_PATH" >/dev/null; then
+              HEALTHY=true
+              break
+            fi
+
+            sleep 2
+          done
+
+          if [ "$HEALTHY" != "true" ]; then
+            echo "Health check failed."
+            rollback
+          fi
+
+          # Successful deployment
+          git rev-parse HEAD > "$BACKUP_ROOT/current-deployed-commit"
+
+          trap - ERR
+
+          # Retain latest 7 backups
+          find "$BACKUP_ROOT" -mindepth 1 -maxdepth 1 -type d \
+            -printf '%T@ %p\n' |
+            sort -rn |
+            awk 'NR > 7 {print $2}' |
+            while read -r DIR; do
+              rm -rf "$DIR"
+            done
+
+          echo "TokenService deployed successfully."
