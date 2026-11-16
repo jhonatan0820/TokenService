@@ -13,7 +13,7 @@
     <div>
       <p class="eyebrow">MICROSERVICIO DE AUTENTICACIÓN JWT</p>
       <h1>Token Service</h1>
-      <p class="intro">Genera, valida y renueva tokens cifrados con AES-256-GCM.</p>
+      <p class="intro">Genera, valida y renueva tokens cifrados con RSA-OAEP + AES-256-GCM.</p>
     </div>
     <button id="themeToggle" class="theme-toggle" type="button" aria-label="Cambiar a modo claro" title="Cambiar a modo claro"><svg id="themeIcon" viewBox="0 0 24 24" aria-hidden="true"></svg></button>
   </header>
@@ -39,10 +39,9 @@
     <section class="module result-module" aria-labelledby="plainHeading">
       <div class="module-heading">
         <span class="module-number">02</span>
-        <div><h2 id="plainHeading">Token desencriptado</h2><p class="note">JWT legible para inspección visual.</p></div>
+        <div><h2 id="plainHeading">Token descifrado</h2><p class="note">JWT generado y descifrado para mostrar.</p></div>
       </div>
-      <label for="plainToken">JWT en texto claro</label>
-      <textarea id="plainToken" class="result-token" spellcheck="false" readonly placeholder="El JWT legible aparecerá aquí"></textarea>
+      <textarea id="jwtDisplay" class="result-token" spellcheck="false" readonly placeholder="El token descifrado aparecerá aquí"></textarea>
     </section>
 
     <section class="module result-module" aria-labelledby="cipherHeading">
@@ -51,12 +50,12 @@
         <div><h2 id="cipherHeading">Token encriptado</h2><p class="note">Este es el formato requerido para operar.</p></div>
       </div>
       <div class="result-toolbar">
-        <label for="cipherToken">AES-256-GCM</label>
+        <label for="cipherToken">RSA-OAEP + AES-256-GCM</label>
         <button id="copyCipher" class="copy-button" type="button" aria-label="Copiar token encriptado" title="Copiar token encriptado">
           <svg id="copyCipherIcon" viewBox="0 0 24 24" aria-hidden="true"><rect x="8" y="8" width="12" height="13" rx="2"></rect><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h3"></path></svg>
         </button>
       </div>
-      <textarea id="cipherToken" class="result-token" spellcheck="false" readonly placeholder="El token cifrado aparecerá aquí"></textarea>
+      <textarea id="cipherToken" class="result-token" spellcheck="false" readonly placeholder="La cadena cifrada aparecerá aquí"></textarea>
     </section>
   </div>
 
@@ -68,7 +67,7 @@
     </div>
     <div class="actions-form">
       <label for="actionToken">Token encriptado</label>
-      <textarea id="actionToken" class="action-token" spellcheck="false" placeholder="Pega aquí el token AES-256-GCM"></textarea>
+      <textarea id="actionToken" class="action-token" spellcheck="false" placeholder="Pega aquí el token RSA-OAEP + AES-256-GCM"></textarea>
       <div class="action-controls">
         <button id="validate" class="secondary-button" type="button">Validar token</button>
         <button id="refresh" class="primary-button" type="button">Renovar token</button>
@@ -87,6 +86,10 @@
       <a class="footer-link" href="https://github.com/jhonatan0820" target="_blank" rel="noopener noreferrer" aria-label="GitHub de Jhonatan Zambrano" title="GitHub">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .9a11.1 11.1 0 0 0-3.51 21.63c.55.1.76-.24.76-.53v-2.08c-3.1.68-3.76-1.32-3.76-1.32-.5-1.29-1.23-1.63-1.23-1.63-1.01-.69.08-.68.08-.68 1.12.08 1.71 1.15 1.71 1.15.99 1.7 2.59 1.21 3.22.93.1-.72.39-1.21.7-1.49-2.47-.28-5.07-1.24-5.07-5.5 0-1.22.44-2.21 1.15-2.99-.12-.28-.5-1.42.11-2.95 0 0 .94-.3 3.05 1.14a10.6 10.6 0 0 1 5.55 0c2.12-1.44 3.05-1.14 3.05-1.14.61 1.53.23 2.67.11 2.95.72.78 1.15 1.77 1.15 2.99 0 4.27-2.6 5.21-5.08 5.49.4.35.75 1.02.75 2.06V22c0 .29.2.63.76.52A11.1 11.1 0 0 0 12 .9Z"/></svg>
         <span>GitHub</span>
+      </a>
+      <a class="footer-link" href="https://github.com/jhonatan0820/TokenService" target="_blank" rel="noopener noreferrer" aria-label="Repositorio de TokenService en GitHub" title="Repositorio TokenService">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h7l2 2h7v14H4z"/><path d="M8 11h8M8 15h5"/></svg>
+        <span>TokenService</span>
       </a>
       <button id="emailButton" class="footer-link email" type="button" aria-label="Copiar correo electrónico" title="Copiar correo">
         <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m4 7 8 6 8-6"/></svg>
@@ -132,65 +135,83 @@
     return btoa(binary);
   }
 
-  let aesKeyPromise;
-  async function aesKey() {
-    if (!aesKeyPromise) {
-      aesKeyPromise = fetch(`${API_BASE}/tokenService/config`, { headers: { 'Accept': 'application/json' } })
-        .then(async (response) => {
-          const body = await response.json().catch(() => null);
-          if (!response.ok || !body?.webKeyBase64) {
-            throw new Error(body?.error || 'No se pudo cargar la clave de cifrado.');
-          }
-          return crypto.subtle.importKey('raw', fromBase64(body.webKeyBase64), { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
-        })
-        .catch((error) => {
-          aesKeyPromise = null;
-          throw error;
-        });
+  let serverPublicKeyPromise;
+  let webTokenPromise;
+  let responseKeysPromise;
+  async function serverPublicKey() {
+    if (!serverPublicKeyPromise) {
+      serverPublicKeyPromise = fetch(`${API_BASE}/tokenService/config`, { cache: 'no-store' })
+        .then(async response => {
+          const config = await response.json();
+          if (!response.ok || !config.publicKeyBase64) throw new Error('No se pudo cargar la llave pública.');
+          return crypto.subtle.importKey('spki', fromBase64(config.publicKeyBase64),
+            { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['encrypt']);
+        }).catch(error => { serverPublicKeyPromise = null; throw error; });
     }
-    return aesKeyPromise;
+    return serverPublicKeyPromise;
   }
 
-  async function encryptText(text) {
+  async function webToken() {
+    if (!webTokenPromise) webTokenPromise = fetch(`${API_BASE}/tokenService/config`, { cache: 'no-store' }).then(r => r.json()).then(c => c.webToken);
+    return webTokenPromise;
+  }
+  async function responseKeys() {
+    if (!responseKeysPromise) {
+      responseKeysPromise = crypto.subtle.generateKey({ name: 'RSA-OAEP', modulusLength: 3072,
+        publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['encrypt', 'decrypt'])
+        .then(async pair => {
+          const publicKeyBase64 = toBase64(new Uint8Array(await crypto.subtle.exportKey('spki', pair.publicKey)));
+          const privateBytes = new Uint8Array(await crypto.subtle.exportKey('pkcs8', pair.privateKey));
+          const privateKey = await crypto.subtle.importKey('pkcs8', privateBytes,
+            { name: 'RSA-OAEP', hash: 'SHA-256' }, false, ['decrypt']);
+          privateBytes.fill(0);
+          return { privateKey, publicKeyBase64 };
+        }).catch(error => { responseKeysPromise = null; throw error; });
+    }
+    return responseKeysPromise;
+  }
+
+  async function encryptPayload(value, recipient = null) {
+    const aesKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, true, ['encrypt']);
+    const rawKey = await crypto.subtle.exportKey('raw', aesKey);
     const iv = crypto.getRandomValues(new Uint8Array(12));
-    const encrypted = new Uint8Array(await crypto.subtle.encrypt(
-      { name: 'AES-GCM', iv, tagLength: 128 }, await aesKey(), new TextEncoder().encode(text)
-    ));
-    const packed = new Uint8Array(iv.length + encrypted.length);
-    packed.set(iv, 0);
-    packed.set(encrypted, iv.length);
+    const ciphertext = await crypto.subtle.encrypt({ name: 'AES-GCM', iv, tagLength: 128 }, aesKey,
+      new TextEncoder().encode(JSON.stringify(value)));
+    const wrappedKey = new Uint8Array(await crypto.subtle.encrypt({ name: 'RSA-OAEP' }, recipient || await serverPublicKey(), rawKey));
+    const packed = new Uint8Array(3 + wrappedKey.length + 12 + ciphertext.byteLength);
+    packed[0] = 1; packed[1] = wrappedKey.length >>> 8; packed[2] = wrappedKey.length & 255;
+    packed.set(wrappedKey, 3); packed.set(iv, 3 + wrappedKey.length); packed.set(new Uint8Array(ciphertext), 3 + wrappedKey.length + 12);
     return toBase64(packed);
   }
-
-  async function decryptText(value) {
-    const packed = fromBase64(value.trim());
-    if (packed.length <= 28) throw new Error('El token no tiene un formato cifrado válido.');
-    const iv = packed.slice(0, 12);
-    const ciphertext = packed.slice(12);
-    const plaintext = await crypto.subtle.decrypt(
-      { name: 'AES-GCM', iv, tagLength: 128 }, await aesKey(), ciphertext
-    );
-    return new TextDecoder().decode(plaintext);
+  async function decryptPayload(value, privateKey) {
+    const packed = fromBase64(value);
+    if (packed.length < 31 || packed[0] !== 1) throw new Error('Sobre cifrado inválido');
+    const length = (packed[1] << 8) | packed[2];
+    if (!length || packed.length < 3 + length + 28) throw new Error('Sobre cifrado truncado');
+    const rawKey = await crypto.subtle.decrypt({ name: 'RSA-OAEP' }, privateKey, packed.slice(3, 3 + length));
+    const aesKey = await crypto.subtle.importKey('raw', rawKey, { name: 'AES-GCM' }, false, ['decrypt']);
+    const iv = packed.slice(3 + length, 15 + length);
+    const ciphertext = packed.slice(15 + length);
+    const clear = await crypto.subtle.decrypt({ name: 'AES-GCM', iv, tagLength: 128 }, aesKey, ciphertext);
+    return JSON.parse(new TextDecoder().decode(clear));
   }
-
-  async function decryptJwt(value) {
-    const decoded = JSON.parse(await decryptText(value));
-    if (typeof decoded?.text !== 'string') throw new Error('Respuesta cifrada inválida: no contiene el JWT.');
-    return decoded.text;
-  }
-
-  async function post(path, data) {
+  async function post(path, data, encryptData = false) {
+    const client = await responseKeys();
+    const encryptedData = encryptData ? await encryptPayload(data) : data;
+    const encryptedBody = await encryptPayload({ data: encryptedData });
     const response = await fetch(`${API_BASE}/tokenService/web/${path}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({ data })
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'Accept': 'application/json',
+        'X-Client-Public-Key': client.publicKeyBase64, 'X-Web-Token': await webToken() }, body: JSON.stringify({ data: encryptedBody }),
     });
     const body = await response.json().catch(() => null);
+    if (response.headers.get('X-Encrypted-Response') === 'RSA-OAEP-AES-GCM') {
+      const clear = await decryptPayload(body.data, client.privateKey);
+      if (!response.ok) throw new Error(clear?.error || clear?.message || `Error HTTP ${response.status}`);
+      return clear;
+    }
     if (!response.ok) throw new Error(body?.error || body?.message || `Error HTTP ${response.status}`);
-    return body;
-  }
-
-  function setMessage(id, message, ok) {
+    throw new Error('El servidor devolvió una respuesta sin cifrar.');
+  }  function setMessage(id, message, ok) {
     const node = byId(id);
     node.textContent = message;
     node.className = `status ${ok ? 'success' : 'error'}`;
@@ -272,28 +293,9 @@
 
   async function requireEncryptedToken() {
     const value = byId('actionToken').value.trim();
-    if (!value) throw new Error('Ingresa el token encriptado.');
-
-    const jwtParts = value.split('.');
-    if (jwtParts.length === 3 && jwtParts.every((part) => part.length > 0)) {
-      throw new Error('La data no está cifrada. Envía el token cifrado en Base64.');
-    }
-
-    let packed;
-    try {
-      packed = fromBase64(value);
-    } catch {
-      throw new Error('La data no está cifrada. Envía el token cifrado en Base64.');
-    }
-    if (packed.length <= 28) {
-      throw new Error('La data no está cifrada. Envía el token cifrado en Base64.');
-    }
-
-    try {
-      await decryptText(value);
-    } catch {
-      throw new Error('La data está cifrada, pero está corrupta o fue alterada.');
-    }
+    if (!value) throw new Error('Ingresa la cadena cifrada del token.');
+    try { const bytes = fromBase64(value); if (bytes.length < 31 || bytes[0] !== 1) throw new Error(); }
+    catch { throw new Error('El token debe ser una cadena Base64 cifrada válida.'); }
     return value;
   }
   byId('copyCipher').addEventListener('click', () => copyField('cipherToken', 'copyCipher', 'copyCipherIcon'));
@@ -306,13 +308,12 @@
       if (!payload || Array.isArray(payload) || typeof payload !== 'object') {
         throw new Error('Los datos deben ser un objeto JSON.');
       }
-      const encryptedPayload = await encryptText(JSON.stringify(payload));
-      const result = await post('generate', encryptedPayload);
+      const result = await post('generate', payload, true);
       if (typeof result?.data !== 'string') throw new Error('Respuesta inesperada del microservicio.');
       byId('cipherToken').value = result.data;
-      const jwt = await decryptJwt(result.data);
-      byId('plainToken').value = jwt;
-      setMessage('generateMessage', 'Token generado. Se muestran las versiones legible y encriptada.', true);
+      const decoded = await post('decrypt', result.data);
+      byId('jwtDisplay').value = decoded?.data?.text || '';
+      setMessage('generateMessage', 'Token generado y cifrado para web.', true);
       setMessage('tokenInputMessage', '', true);
     } catch (error) {
       setMessage('generateMessage', error.message || 'No fue posible generar el token.', false);
@@ -355,8 +356,8 @@
       const result = await post('refresh', encryptedToken);
       if (typeof result?.data !== 'string') throw new Error('Respuesta inesperada del microservicio.');
       byId('cipherToken').value = result.data;
-      const jwt = await decryptJwt(result.data);
-      byId('plainToken').value = jwt;
+      const decoded = await post('decrypt', result.data);
+      byId('jwtDisplay').value = decoded?.data?.text || '';
       showToast('Token renovado correctamente.', 'success');
     } catch (error) {
       if (error.message.startsWith('La data no está cifrada')
@@ -385,6 +386,22 @@
 </script>
 </body>
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

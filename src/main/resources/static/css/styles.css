@@ -416,3 +416,30 @@ button span[aria-hidden="true"] { padding-left: 5px; }
   .toast { animation: none; }
   .toast.is-leaving { transition: none; }
 }
+
+/* Viewport-safe page flow: content can grow and scroll; footer never overlays it. */
+html { min-height: 100%; }
+body {
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+.app-shell {
+  display: flex;
+  min-height: calc(100vh - 54px);
+  min-height: calc(100dvh - 54px);
+  flex-direction: column;
+}
+.site-footer {
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-bottom: max(20px, env(safe-area-inset-bottom));
+}
+.footer-links { flex-wrap: wrap; }
+
+@media (max-width: 620px) {
+  body { padding-bottom: max(32px, env(safe-area-inset-bottom)); }
+  .app-shell { min-height: calc(100vh - 56px); min-height: calc(100dvh - 56px); }
+  .site-footer { align-items: flex-start; }
+  .footer-links { width: 100%; }
+}
