@@ -26,7 +26,7 @@ jobs:
           BACKUP_ROOT="/opt/homelab/backups/tokenservice"
           CONTAINER="token-service"
           SERVICE="token-service"
-          HEALTH_PATH="/tokenService/config"
+          HEALTH_PATH="/tokenService/health"
           STAMP=$(date +%Y%m%d-%H%M%S)
           BACKUP_DIR="$BACKUP_ROOT/$STAMP"
 

@@ -33,7 +33,7 @@ public class EncryptedTransportFilter extends OncePerRequestFilter {
 
     @Override protected boolean shouldNotFilter(HttpServletRequest request) {
         String path = request.getRequestURI();
-        return path.equals("/") || path.equals("/tokenService/config")
+        return path.equals("/") || path.equals("/tokenService/config") || path.equals("/tokenService/health")
                 || path.matches(".+\\.(html|css|js|svg|ico|png|jpg|jpeg|woff2?)$");
     }
 

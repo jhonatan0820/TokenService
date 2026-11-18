@@ -124,6 +124,7 @@ public class TokenService {
 
     public String publicKeyBase64(boolean web) {
         JsonNode response = crypto.get().uri(web ? "/cryptoService/web/public-key" : "/cryptoService/public-key")
+                .header(tokenHeader(web), token(web))
                 .retrieve().body(JsonNode.class);
         JsonNode value = response == null ? null : response.get("publicKeyBase64");
         if (value == null || !value.isTextual()) throw new IllegalStateException("EncryptService no entregó su llave pública");
