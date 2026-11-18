@@ -92,3 +92,7 @@ Las rutas normales usan ENCRYPT_SERVICE_TOKEN y la llave RSA de servicio. Las ru
 ## Revocación al renovar
 
 Cuando `POST /tokenService/refresh` emite el reemplazo, marca el `jti` anterior como revocado hasta su expiración original. Desde entonces, `/validate` lo reporta como `VENCIDO`, y `/refresh` o cualquier validación de datos lo rechaza. El registro de revocación vive en memoria del proceso y se limpia cuando el JWT habría expirado; el despliegue Compose actual ejecuta una instancia.
+# Códigos de cifrado entre servicios
+
+TokenService usa el código `TOKN` al cifrar y descifrar sus datos persistidos en EncryptService. Las llamadas de backend usan `X-Service-Token` para autorización y `X-Service-Code: TOKN` para seleccionar el formato AES-GCM del servicio. Los endpoints `/web/*` conservan su alcance y transporte web independiente. Los sobres RSA existentes se siguen aceptando durante la migración.
+

@@ -131,7 +131,9 @@ public class TokenService {
     }
 
     public JsonNode decryptPayload(String data, boolean web) {
-        JsonNode response = crypto.post().uri(prefix(web) + "/decrypt").header(tokenHeader(web), token(web))
+        var request = crypto.post().uri(prefix(web) + "/decrypt").header(tokenHeader(web), token(web));
+        if (!web) request.header("X-Service-Code", "TOKN");
+        JsonNode response = request
                 .contentType(MediaType.APPLICATION_JSON).body(Map.of("data", data)).retrieve().body(JsonNode.class);
         JsonNode result = response == null ? null : response.get("data");
         if (result == null || result.isNull()) throw new IllegalArgumentException("Respuesta decrypt inválida");
@@ -141,7 +143,9 @@ public class TokenService {
     public String encryptPayload(JsonNode payload, String recipientPublicKey, boolean web) {
         ObjectNode request = mapper.createObjectNode().set("data", payload);
         if (recipientPublicKey != null && !recipientPublicKey.isBlank()) request.put("recipientPublicKey", recipientPublicKey);
-        JsonNode response = crypto.post().uri(prefix(web) + "/encrypt").header(tokenHeader(web), token(web))
+        var call = crypto.post().uri(prefix(web) + "/encrypt").header(tokenHeader(web), token(web));
+        if (!web && (recipientPublicKey == null || recipientPublicKey.isBlank())) call.header("X-Service-Code", "TOKN");
+        JsonNode response = call
                 .contentType(MediaType.APPLICATION_JSON).body(request).retrieve().body(JsonNode.class);
         JsonNode data = response == null ? null : response.get("data");
         if (data == null || !data.isTextual()) throw new IllegalStateException("Respuesta encrypt inválida");
