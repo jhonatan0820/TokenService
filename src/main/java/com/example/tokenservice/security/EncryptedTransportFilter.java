@@ -39,8 +39,8 @@ public class EncryptedTransportFilter extends OncePerRequestFilter {
 
     @Override protected void doFilterInternal(HttpServletRequest request, HttpServletResponse response, FilterChain chain)
             throws ServletException, IOException {
-        boolean web = request.getRequestURI().startsWith("/tokenService/web/");
-        String suppliedToken = request.getHeader(web ? "X-Web-Token" : "X-Service-Token");
+        boolean web = request.getHeader("X-Web-Token") != null;
+        String suppliedToken = request.getHeader(web ? "X-Web-Token" : "X-Encrypt-Token");
         boolean authorized = web ? tokens.acceptsWebToken(suppliedToken) : tokens.acceptsServiceToken(suppliedToken);
         if (!authorized) { response.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Token de integración inválido"); return; }
         byte[] input = request.getInputStream().readAllBytes();
@@ -59,27 +59,29 @@ public class EncryptedTransportFilter extends OncePerRequestFilter {
             return;
         }
 
-        String clientPublicKey = request.getHeader("X-Client-Public-Key");
-        if (clientPublicKey == null || clientPublicKey.isBlank()) {
-            response.sendError(HttpServletResponse.SC_BAD_REQUEST, "Falta la llave pública efímera del cliente");
-            return;
-        }
         BufferResponse buffered = new BufferResponse(response);
         chain.doFilter(clearRequest, buffered);
         byte[] clear = buffered.bytes();
+        if (request.getRequestURI().equals("/tokenService/decrypt")) {
+            response.setStatus(buffered.getStatus());
+            response.setContentType("application/json;charset=UTF-8");
+            response.setContentLength(clear.length);
+            response.getOutputStream().write(clear);
+            return;
+        }
         if (clear.length == 0 || response.getStatus() == HttpServletResponse.SC_NO_CONTENT) {
             response.setContentLength(clear.length);
             response.getOutputStream().write(clear);
             return;
         }
         JsonNode payload = mapper.readTree(clear);
-        String encrypted = tokens.encryptPayload(payload, clientPublicKey, web);
+        String encrypted = tokens.encryptPayload(payload, web);
         ObjectNode body = mapper.createObjectNode();
         body.put("data", encrypted);
         byte[] output = mapper.writeValueAsBytes(body);
         response.resetBuffer();
         response.setStatus(buffered.getStatus());
-        response.setHeader("X-Encrypted-Response", "RSA-OAEP-AES-GCM");
+        response.setHeader("X-Encrypted-Response", "AES-256-GCM-GLOBAL");
         response.setContentType("application/json;charset=UTF-8");
         response.setContentLength(output.length);
         response.getOutputStream().write(output);

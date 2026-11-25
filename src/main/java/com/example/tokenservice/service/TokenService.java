@@ -27,37 +27,39 @@ public class TokenService {
     private final SecretKey key;
     private final ObjectMapper mapper;
     private final RestClient crypto;
-    private final String serviceToken;
+    private final String apiToken;
     private final String webToken;
+    private final String webCryptoProfile;
     private final long expirationSeconds;
     private final ConcurrentHashMap<String, Instant> revokedTokens = new ConcurrentHashMap<>();
 
     public TokenService(SecretKey key, ObjectMapper mapper,
+            RestClient.Builder cryptoBuilder,
             @Value("${crypto.base-url}") String cryptoUrl,
-            @Value("${crypto.service-token}") String serviceToken,
+            @Value("${crypto.api-token:${crypto.service-token}}") String apiToken,
             @Value("${crypto.web-token}") String webToken,
+            @Value("${crypto.web-profile:TOKN}") String webCryptoProfile,
             @Value("${jwt.expiration-seconds:120}") long expirationSeconds) {
         this.key = key;
         this.mapper = mapper;
-        this.crypto = RestClient.builder().baseUrl(cryptoUrl).build();
-        this.serviceToken = serviceToken;
+        this.crypto = cryptoBuilder.clone().baseUrl(cryptoUrl).build();
+        this.apiToken = apiToken;
         this.webToken = webToken;
+        this.webCryptoProfile = webCryptoProfile;
         this.expirationSeconds = expirationSeconds;
     }
 
-    public String webToken() { return webToken; }
+    public boolean acceptsApiToken(String supplied) { return tokenMatches(supplied, apiToken); }
     public boolean acceptsWebToken(String supplied) { return tokenMatches(supplied, webToken); }
-    public boolean acceptsServiceToken(String supplied) { return tokenMatches(supplied, serviceToken); }
+    public boolean acceptsServiceToken(String supplied) { return acceptsApiToken(supplied); }
+    public String webToken() { return webToken; }
 
     private boolean tokenMatches(String supplied, String expected) {
         return supplied != null && MessageDigest.isEqual(
                 expected.getBytes(StandardCharsets.UTF_8), supplied.getBytes(StandardCharsets.UTF_8));
     }
 
-    private String prefix(boolean web) { return web ? "/cryptoService/web" : "/cryptoService"; }
-    private String token(boolean web) { return web ? webToken : serviceToken; }
-    private String tokenHeader(boolean web) { return web ? "X-Web-Token" : "X-Service-Token"; }
-
+    private String prefix(boolean web) { return "/api/crypto"; }
     public String createEncryptedFromEncryptedData(String data, boolean web) {
         JsonNode original = decryptData(data, web);
         if (!original.isObject()) throw new IllegalArgumentException("EncryptService debe devolver data como objeto JSON");
@@ -69,7 +71,7 @@ public class TokenService {
                 .expiration(Date.from(Instant.now().plusSeconds(expirationSeconds)))
                 .claim("data", data).signWith(key).compact();
         ObjectNode text = mapper.createObjectNode().put("text", jwt);
-        return encryptPayload(text, null, web);
+        return encryptPayload(text, web);
     }
 
     public String tokenStatus(String encryptedToken, boolean web) {
@@ -123,8 +125,10 @@ public class TokenService {
     }
 
     public String publicKeyBase64(boolean web) {
-        JsonNode response = crypto.get().uri(web ? "/cryptoService/web/public-key" : "/cryptoService/public-key")
-                .header(tokenHeader(web), token(web))
+        String keyUri = web
+                ? "/api/crypto/public-key?profile=" + webCryptoProfile
+                : "/api/crypto/public-key";
+        JsonNode response = crypto.get().uri(keyUri)
                 .retrieve().body(JsonNode.class);
         JsonNode value = response == null ? null : response.get("publicKeyBase64");
         if (value == null || !value.isTextual()) throw new IllegalStateException("EncryptService no entregó su llave pública");
@@ -132,8 +136,7 @@ public class TokenService {
     }
 
     public JsonNode decryptPayload(String data, boolean web) {
-        var request = crypto.post().uri(prefix(web) + "/decrypt").header(tokenHeader(web), token(web));
-        if (!web) request.header("X-Service-Code", "TOKN");
+        var request = crypto.post().uri(prefix(web) + "/decrypt");
         JsonNode response = request
                 .contentType(MediaType.APPLICATION_JSON).body(Map.of("data", data)).retrieve().body(JsonNode.class);
         JsonNode result = response == null ? null : response.get("data");
@@ -141,11 +144,17 @@ public class TokenService {
         return result;
     }
 
-    public String encryptPayload(JsonNode payload, String recipientPublicKey, boolean web) {
-        ObjectNode request = mapper.createObjectNode().set("data", payload);
-        if (recipientPublicKey != null && !recipientPublicKey.isBlank()) request.put("recipientPublicKey", recipientPublicKey);
-        var call = crypto.post().uri(prefix(web) + "/encrypt").header(tokenHeader(web), token(web));
-        if (!web && (recipientPublicKey == null || recipientPublicKey.isBlank())) call.header("X-Service-Code", "TOKN");
+    public String encryptPayload(JsonNode payload, boolean web) {
+        ObjectNode request = mapper.createObjectNode();
+        if (web) {
+            ObjectNode profileData = mapper.createObjectNode();
+            profileData.set("__crypto", mapper.createObjectNode().put("profile", webCryptoProfile));
+            profileData.set("payload", payload);
+            request.set("data", profileData);
+        } else {
+            request.set("data", payload);
+        }
+        var call = crypto.post().uri(prefix(web) + "/encrypt");
         JsonNode response = call
                 .contentType(MediaType.APPLICATION_JSON).body(request).retrieve().body(JsonNode.class);
         JsonNode data = response == null ? null : response.get("data");
