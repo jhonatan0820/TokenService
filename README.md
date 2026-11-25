@@ -1,98 +1,96 @@
-# Token Service
+# TokenService
 
-Microservicio para generar, validar y renovar JWT firmados con HS256. Los JWT
-se conservan como sobres cifrados con la llave pública de EncryptService; el
-navegador solo recibe el sobre opaco.
+TokenService issues, validates, refreshes, and decrypts encrypted JWT payloads. EncryptService owns the RSA and AES encryption keys; TokenService stores only its JWT signing secret and access tokens.
 
-La interfaz está disponible en [https://tokenservice.dotacioneszambrano.com/](https://tokenservice.dotacioneszambrano.com/).
+## Encryption contract
 
-## Cifrado híbrido
+Current browser clients and backend integrations use EncryptService envelope version 4. Ciphertext is one Base64 string carried in the root `data` field:
 
-EncryptService publica una llave RSA. El navegador cifra cada solicitud con
-RSA-OAEP/SHA-256 y una llave AES-256-GCM aleatoria. Cada página también crea
-un par RSA efímero: TokenService cifra la respuesta para su llave pública y el
-navegador la descifra con la llave privada que mantiene en memoria.
+```json
+{ "data": "<Base64 ciphertext>" }
+```
 
-TokenService llama a las rutas normales `/cryptoService/decrypt` y
-`/cryptoService/encrypt`. Solo envía `X-Service-Token` al descifrar; nunca
-necesita ni entrega la llave privada RSA de EncryptService.
+The browser encrypts locally with EncryptService profile `TOKN`. TokenService decrypts requests and encrypts responses through EncryptService. Backend integrations use the global profile. TokenService does not send its access tokens to EncryptService.
 
-## API
+## Endpoints
 
-Las solicitudes HTTP de la interfaz llevan un body cifrado y el encabezado
-`X-Client-Public-Key`. TokenService devuelve `X-Encrypted-Response` y un sobre
-cifrado para esa llave efímera.
+| Method and path | Purpose |
+| --- | --- |
+| `GET /tokenService/config` | Returns the `TOKN` public key and web access token used by the browser. |
+| `GET /tokenService/health` | Returns the service health status. |
+| `POST /tokenService/generate` | Creates a signed JWT from encrypted payload data. |
+| `POST /tokenService/validate` | Validates a token and returns `ACTIVO` or `VENCIDO`. |
+| `POST /tokenService/refresh` | Issues a replacement token and disables the previous token until its original expiration. |
+| `POST /tokenService/decrypt` | Decrypts a value through EncryptService; used by the browser response bridge. |
 
-- `GET /tokenService/config`: obtiene `publicKeyBase64` desde EncryptService.
-- `POST /tokenService/generate`: descifra la carga útil, firma el JWT y devuelve
-  el JWT cifrado para EncryptService.
-- `POST /tokenService/validate`: valida el sobre y devuelve el estado.
-- `POST /tokenService/refresh`: renueva un token vigente y devuelve el nuevo
-  sobre cifrado.
+Protected POST requests carry an encrypted envelope in the root `data` field. TokenService requires `X-Web-Token` from the browser or `X-Encrypt-Token` from a backend integration. These headers authorize requests to TokenService only; do not send them to EncryptService.
 
-Los endpoints `/tokenService/web/*` se conservan como alias de ruta, pero también
-requieren el nuevo sobre asimétrico. Los tokens generados con el formato AES anterior deben regenerarse.
+The browser configuration endpoint obtains its key from EncryptService at `GET /api/crypto/public-key?profile=TOKN`. TokenService selects the web response profile inside the encrypted `data` body.
 
-## Secretos y configuración
+## Postman and backend integrations
 
-`application-secrets.yml` está excluido de Git. Configúralo así:
+EncryptService encrypt and decrypt calls do not require authorization headers. To call TokenService from Postman, encrypt the request with EncryptService, then send it to TokenService with `X-Encrypt-Token`.
+
+For `POST /tokenService/generate`:
+
+1. Encrypt the payload with `POST https://encryptservice.dotacioneszambrano.com/api/crypto/encrypt`:
+
+```json
+{ "data": { "userId": 123, "name": "Sample" } }
+```
+
+2. Take that ciphertext and encrypt an outer request object with EncryptService:
+
+```json
+{ "data": { "data": "<payload-ciphertext>" } }
+```
+
+3. Send the outer ciphertext to `POST https://tokenservice.dotacioneszambrano.com/tokenService/generate`:
+
+```http
+X-Encrypt-Token: <TokenService backend access token>
+Content-Type: application/json
+```
+
+```json
+{ "data": "<outer-ciphertext>" }
+```
+
+TokenService returns an encrypted `data` string. Decrypt it with `POST /api/crypto/decrypt` on EncryptService. A generated token response contains the token ciphertext; decrypt that value once more to inspect its JWT payload. EncryptService selects the correct key profile from each envelope.
+
+## Configuration
+
+Keep `application-secrets.yml` out of Git. TokenService requires the EncryptService base URL, separate API and web access tokens, and a JWT signing secret:
 
 ```yaml
 crypto:
-  base-url: "http://localhost:8081"
-  service-token: "<token de integración compartido con EncryptService>"
+  base-url: "https://encryptservice.dotacioneszambrano.com"
+  api-token: "<TokenService backend access token>"
+  web-token: "<TokenService browser access token>"
 
 jwt:
-  secret: "<secreto aleatorio de al menos 32 bytes>"
+  secret: "<random secret of at least 32 bytes>"
   expiration-seconds: 120
 ```
 
-En Docker, usa `crypto.base-url: "http://encrypt-service:8080"`. El token debe
-coincidir con `crypto.service-token` de EncryptService.
+The browser profile is non-secret configuration in `src/main/resources/application.properties`:
 
-Variables de entorno compatibles: `SERVER_PORT`, `CRYPTO_BASE_URL`,
-`CRYPTO_SERVICE_TOKEN`, `JWT_SECRET` y `JWT_EXPIRATION_SECONDS`.
+```properties
+crypto.web-profile=TOKN
+```
 
-## Ejecución local
+## Local development
 
-Requisitos: JDK 17+, Maven 3.8+ y EncryptService disponible en
-`http://localhost:8081`.
-
-1. Crea `application-secrets.yml` con la configuración anterior.
-2. Desde la raíz del proyecto, inicia el servicio:
+Requirements: Java 17, Maven, and a running EncryptService. Start EncryptService on port 8080. In another terminal, start TokenService on port 8081 with its base URL pointed to EncryptService:
 
 ```powershell
+$env:SERVER_PORT = "8081"
+$env:CRYPTO_BASE_URL = "http://localhost:8080"
 mvn spring-boot:run
 ```
 
-La interfaz estará en `http://localhost:8080/`.
+The interface is available at `http://localhost:8081/`.
 
 ## Docker Compose
 
-Compose conecta el contenedor a la red externa `homelab`, compartida con
-EncryptService. La red debe existir antes de iniciar los servicios. Configura
-`application-secrets.yml` con `crypto.base-url: "http://encrypt-service:8080"`
-y ejecuta:
-
-```powershell
-docker compose up -d --build
-```
-
-El contenedor expone el puerto `8080` dentro de la red Docker; un proxy inverso
-conectado a `homelab` puede dirigir el tráfico hacia `token-service:8080`.
-
-
-
-
-## Alcances de cifrado
-
-Las rutas normales usan ENCRYPT_SERVICE_TOKEN y la llave RSA de servicio. Las rutas /tokenService/web/* usan el token web y la llave pública web. El filtro cifra las respuestas para la llave efímera del navegador. El campo data es una cadena Base64 compacta; no se envía un objeto con wrappedKey, iv y ciphertext.
-
-
-## Revocación al renovar
-
-Cuando `POST /tokenService/refresh` emite el reemplazo, marca el `jti` anterior como revocado hasta su expiración original. Desde entonces, `/validate` lo reporta como `VENCIDO`, y `/refresh` o cualquier validación de datos lo rechaza. El registro de revocación vive en memoria del proceso y se limpia cuando el JWT habría expirado; el despliegue Compose actual ejecuta una instancia.
-# Códigos de cifrado entre servicios
-
-TokenService usa el código `TOKN` al cifrar y descifrar sus datos persistidos en EncryptService. Las llamadas de backend usan `X-Service-Token` para autorización y `X-Service-Code: TOKN` para seleccionar el formato AES-GCM del servicio. Los endpoints `/web/*` conservan su alcance y transporte web independiente. Los sobres RSA existentes se siguen aceptando durante la migración.
-
+Configure `crypto.base-url` as `http://encrypt-service:8080`, mount TokenService `application-secrets.yml` read-only, and connect the container to the external `homelab` Docker network. The service listens on port 8080 inside that network.
